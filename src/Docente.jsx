@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { db } from "./firebase";
+import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
 
 const styles = {
   alertBadge: {
@@ -717,6 +719,67 @@ export default function App() {
   });
 
   const [students, setStudents] = useState(INITIAL_STUDENTS);
+  const [liveLogs, setLiveLogs] = useState([]);
+
+  // 🔄 Escuchador en tiempo real de Firestore
+  useEffect(() => {
+    let unsubscribe = () => {};
+    try {
+      const q = query(collection(db, "bitacora_alumnos"), orderBy("fecha", "desc"));
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const logs = [];
+        snapshot.forEach((doc) => {
+          logs.push({ id: doc.id, ...doc.data() });
+        });
+        setLiveLogs(logs);
+
+        // Si hay logs reales de alumnos, los sincronizamos con la lista de la clase
+        if (logs.length > 0) {
+          setStudents((prev) => {
+            const updated = [...prev];
+            logs.forEach((log) => {
+              if (!log.alumno) return;
+              let student = updated.find(s => s.name.toLowerCase().includes(log.alumno.toLowerCase()) || log.alumno.toLowerCase().includes(s.name.toLowerCase()));
+              if (!student) {
+                // Crear alumno nuevo dinámico desde los datos de Firebase
+                student = {
+                  id: Date.now() + Math.random(),
+                  name: log.alumno,
+                  shipName: "Nave " + (log.escuela || "Córdoba"),
+                  uuid: log.id || "uuid-demo",
+                  xp: log.xp || 150,
+                  badgeEarned: (log.xp >= 750),
+                  interestRegistered: true,
+                  helpsRequested: 0,
+                  errorsCount: 0,
+                  justificationQuality: "Master",
+                  missions: {
+                    m1: { status: log.mision === "m1" ? "completado" : "bloqueada", attempts: 1, helps: 0, errors: 0, lastErrorCode: null },
+                    m2: { status: log.mision === "m2" ? "completado" : "bloqueada", attempts: 1, helps: 0, errors: 0, lastErrorCode: null },
+                    m3: { status: log.mision === "m3" ? "completado" : "bloqueada", attempts: 1, helps: 0, errors: 0, lastErrorCode: null },
+                    m4: { status: log.mision === "m4" ? "completado" : "bloqueada", attempts: 1, helps: 0, errors: 0, lastErrorCode: null }
+                  }
+                };
+                updated.unshift(student);
+              } else {
+                if (log.xp && log.xp > student.xp) student.xp = log.xp;
+                if (log.mision) {
+                  student.missions[log.mision] = { status: "completado", attempts: 1, helps: 0, errors: 0, lastErrorCode: null };
+                }
+              }
+            });
+            return updated;
+          });
+        }
+      }, (err) => {
+        console.error("Firestore error:", err);
+      });
+    } catch (e) {
+      console.error("Error al configurar onSnapshot:", e);
+    }
+
+    return () => unsubscribe();
+  }, []);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [teacherMessage, setTeacherMessage] = useState("¡Buen viaje espacial, tripulantes! Lean con atención cada consigna.");
   const [inputMsg, setInputMsg] = useState(teacherMessage);
@@ -998,6 +1061,24 @@ export default function App() {
                 </table>
               </div>
             </div>
+          {/* BOX DE TELEMETRÍA FIRESTORE EN TIEMPO REAL */}
+          <div style={{ marginTop: "20px", backgroundColor: "#020617", padding: "16px", borderRadius: "12px", border: "1px solid #1e293b" }}>
+            <h4 style={{ color: "#38bdf8", margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: "8px" }}>
+              📡 Telemetría xAPI en Vivo desde Firebase {liveLogs.length > 0 && <span style={{ fontSize: "11px", backgroundColor: "#10b981", color: "#fff", padding: "2px 8px", borderRadius: "10px" }}>● EN TIEMPO REAL ({liveLogs.length} eventos)</span>}
+            </h4>
+            <div style={{ maxHeight: "180px", overflowY: "auto", fontSize: "12px", fontFamily: "monospace", color: "#94a3b8" }}>
+              {liveLogs.length === 0 ? (
+                <div style={{ color: "#64748b", fontStyle: "italic" }}>Conectado a Firestore. Esperando actividad de alumnos en tiempo real...</div>
+              ) : (
+                liveLogs.map((log) => (
+                  <div key={log.id} style={{ marginBottom: "6px", borderBottom: "1px dashed #1e293b", paddingBottom: "4px" }}>
+                    <strong style={{ color: "#38bdf8" }}>{log.alumno || "Alumno"}</strong> ({log.escuela || "1° Año"}): <span style={{ color: "#f8fafc" }}>{log.evento}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
 
             <div style={styles.rightColumn}>
               <div style={styles.dashboardCard}>
