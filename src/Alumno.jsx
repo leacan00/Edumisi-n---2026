@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { db } from "./firebase";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // ==========================================
 // 🛠️ MOTOR DE GENERACIÓN MATEMÁTICA Y OPCIONES (M1 - M4)
@@ -500,6 +502,19 @@ export default function App() {
       { id: Date.now(), timestamp: new Date().toLocaleTimeString("es-AR"), text },
       ...prev
     ]);
+    try {
+      addDoc(collection(db, "bitacora_alumnos"), {
+        alumno: perfilAlumno.nickname || "Alumno Explorador",
+        escuela: perfilAlumno.escuela || "Sin Escuela",
+        curso: perfilAlumno.curso || "1er Año",
+        evento: text,
+        mision: misionActual,
+        xp: xpTotal,
+        fecha: serverTimestamp()
+      }).catch((err) => console.error("Error enviando a Firestore:", err));
+    } catch (e) {
+      console.error("Firestore no inicializado:", e);
+    }
   };
 
   // Cuestionario 1: Guardar Perfil de Ingreso
